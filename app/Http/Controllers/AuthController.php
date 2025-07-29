@@ -16,32 +16,27 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-            // Coba login sebagai petugas
-    if (Auth::guard('petugas')->attempt(['email' => $request->email, 'password' => $request->password])) {
-        $request->session()->regenerate();
-
-        return redirect('/admin/dashboard');
-    }
-
-    // Coba login sebagai pengguna biasa
-    if (Auth::attempt(['email' => $request->email, 'password' => $request->password])) {
-        $request->session()->regenerate();
-
-        return redirect('/pengguna/dashboard');
-    }
-
-    // Jika gagal dua-duanya
-    return back()->withErrors([
-        'email' => 'Email atau password salah.',
-    ]);
-
         $credentials = $request->only('email', 'password');
 
-        if (Auth::attempt($credentials)) {
+        // Coba login sebagai petugas
+        if (Auth::guard('petugas')->attempt($credentials)) {
             $request->session()->regenerate();
-            return redirect()->intended('/dashboard');
+            return redirect()->route('admin.dashboard')->with('success', 'Login berhasil sebagai Petugas!');
         }
 
+
+        // Coba login sebagai pengguna (guard default 'web')
+        if (Auth::guard('web')->attempt($credentials)) {
+            $request->session()->regenerate();
+            return redirect()->route('pengguna.dashboard')->with('success', 'Login berhasil sebagai Pengguna!');
+        }
+
+        // if (Auth::attempt($credentials)) {
+        //     $request->session()->regenerate();
+        //     return redirect()->route('pengguna.dashboard')->with('success', 'Login berhasil sebagai Pengguna!');
+        // }
+
+        // Jika gagal
         return back()->withErrors([
             'email' => 'Email atau password salah.',
         ]);
@@ -49,6 +44,7 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        // Logout dari semua guard
         Auth::guard('web')->logout();
         Auth::guard('petugas')->logout();
 
@@ -57,7 +53,7 @@ class AuthController extends Controller
 
         return redirect('/login');
     }
-    
+
     public function showRegister()
     {
         return view('auth.register');
@@ -66,24 +62,25 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $request->validate([
-            'nama_lengkap' => 'required|string|max:100',
-            'email' => 'required|email|unique:pengguna,email',
-            'username' => 'required|string|max:50|unique:pengguna,username',
-            'password' => 'required|min:6|confirmed',
-            'gambar_jaminan' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'nama_lengkap'    => 'required|string|max:100',
+            'email'           => 'required|email|unique:pengguna,email',
+            'username'        => 'required|string|max:50|unique:pengguna,username',
+            'password'        => 'required|min:6|confirmed',
+            'gambar_jaminan'  => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ]);
 
-        $user = Pengguna::create([
-            'nama_lengkap' => $request->nama_lengkap,
-            'email' => $request->email,
-            'username' => $request->username,
-            'gambar_jaminan' => $request->file('gambar_jaminan') ?
-                $request->file('gambar_jaminan')->store('images', 'public') : null,
-            'password' => Hash::make($request->password),
-        ]);
+    $data = $request->only(['nama_lengkap', 'email', 'username']);
+    $data['password'] = Hash::make($request->password);
 
-        Auth::login($user); // otomatis login setelah register
-
-        return redirect('/dashboard');
+    if ($request->hasFile('gambar_jaminan')) {
+        $file = $request->file('gambar_jaminan');
+        $filename = time() . '_' . $file->getClientOriginalName();
+        $file->storeAs('public/pengguna', $filename);
+        $data['gambar_jaminan'] = 'pengguna/' . $filename;
     }
+
+    Pengguna::create($data);
+
+    return redirect('/login')->with('success', 'Registrasi berhasil! Silakan login.');
+}
 }
